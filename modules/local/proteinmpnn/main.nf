@@ -3,16 +3,16 @@ process PROTEINMPNN {
     label 'process_gpu'
 
     conda "${moduleDir}/environment.yml"
-    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        params.mpnn_sif_path ?: 'docker://proteinmpnn/proteinmpnn:latest' :
-        'docker.io/proteinmpnn/proteinmpnn:latest' }"
+    container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container
+        ? params.mpnn_sif_path ?: 'docker://proteinmpnn/proteinmpnn:latest'
+        : 'docker.io/proteinmpnn/proteinmpnn:latest'}"
 
     input:
     tuple val(meta), path(pdb), path(trb)
 
     output:
     tuple val(meta), path("*.fa"), emit: sequences
-    path "versions.yml"          , emit: versions
+    path "versions.yml", emit: versions
 
     when:
     task.ext.when == null || task.ext.when
@@ -22,11 +22,8 @@ process PROTEINMPNN {
     def num_sequences = params.mpnn_num_sequences ?: 2
     def config_path = params.mpnn_config_path ?: params.config_dir ?: '.'
     def config_name = params.mpnn_config_name ?: 'MPNN.yaml'
-    def editables_dir = params.mpnn_editables_dir ?: '/opt/ProteinMPNN'
     def helper_dir = params.helper_dir ?: './bin'
-    
-    def bind_args = params.mpnn_editables_dir ? "--bind ${params.mpnn_editables_dir}:${params.mpnn_editables_dir}" : ""
-    
+
     """
     # Create working directories
     output_dir="\${PWD}/MPNNresults_${pdb.baseName}/"
@@ -40,19 +37,9 @@ process PROTEINMPNN {
     path_for_fixed_positions="\${folder_with_pdbs}/fixed_pdbs.jsonl"
     
     # Parse PDB chains
-    if [ "${workflow.containerEngine}" == "singularity" ]; then
-        singularity exec --nv \\
-            ${bind_args} \\
-            --pwd "${editables_dir}" \\
-            ${params.mpnn_sif_path} \\
-            python /opt/ProteinMPNN/helper_scripts/parse_multiple_chains.py \\
-                --input_path "\${folder_with_pdbs}" \\
-                --output_path "\${path_for_parsed_chains}"
-    else
-        python /opt/ProteinMPNN/helper_scripts/parse_multiple_chains.py \\
-            --input_path "\${folder_with_pdbs}" \\
-            --output_path "\${path_for_parsed_chains}"
-    fi
+    python /opt/ProteinMPNN/helper_scripts/parse_multiple_chains.py \\
+        --input_path "\${folder_with_pdbs}" \\
+        --output_path "\${path_for_parsed_chains}"
     
     # Extract fixed residues from trajectory file
     if [ -f "${trb}" ]; then
@@ -61,23 +48,12 @@ process PROTEINMPNN {
         fixed_positions=\$(echo "\${get_fixed}" | grep -- '--fixed_positions' | cut -d'"' -f2)
         
         # Create fixed positions dictionary
-        if [ "${workflow.containerEngine}" == "singularity" ]; then
-            singularity exec --nv \\
-                ${bind_args} \\
-                --pwd "${editables_dir}" \\
-                ${params.mpnn_sif_path} \\
-                python /opt/ProteinMPNN/helper_scripts/make_fixed_positions_dict.py \\
-                    --input_path="\${path_for_parsed_chains}" \\
-                    --output_path="\${path_for_fixed_positions}" \\
-                    --chain_list "\${chains_to_design}" \\
-                    --position_list "\${fixed_positions}"
-        else
-            python /opt/ProteinMPNN/helper_scripts/make_fixed_positions_dict.py \\
-                --input_path="\${path_for_parsed_chains}" \\
-                --output_path="\${path_for_fixed_positions}" \\
-                --chain_list "\${chains_to_design}" \\
-                --position_list "\${fixed_positions}"
-        fi
+        python /opt/ProteinMPNN/helper_scripts/make_fixed_positions_dict.py \\
+            --input_path="\${path_for_parsed_chains}" \\
+            --output_path="\${path_for_fixed_positions}" \\
+            --chain_list "\${chains_to_design}" \\
+            --position_list "\${fixed_positions}"
+        
         fixed_pos_arg="--fixed_positions_jsonl \${path_for_fixed_positions}"
     else
         fixed_pos_arg=""
@@ -90,30 +66,15 @@ process PROTEINMPNN {
         get_args=""
     fi
     
-    # Run ProteinMPNN
-    if [ "${workflow.containerEngine}" == "singularity" ]; then
-        singularity exec --nv \\
-            ${bind_args} \\
-            --pwd "${editables_dir}" \\
-            ${params.mpnn_sif_path} \\
-            python /opt/ProteinMPNN/protein_mpnn_run.py \\
-                --jsonl_path "\${path_for_parsed_chains}" \\
-                --out_folder "\${output_dir}" \\
-                \${fixed_pos_arg} \\
-                --num_seq_per_target ${num_sequences} \\
-                --batch_size 1 \\
-                \${get_args} \\
-                ${args}
-    else
-        python /opt/ProteinMPNN/protein_mpnn_run.py \\
-            --jsonl_path "\${path_for_parsed_chains}" \\
-            --out_folder "\${output_dir}" \\
-            \${fixed_pos_arg} \\
-            --num_seq_per_target ${num_sequences} \\
-            --batch_size 1 \\
-            \${get_args} \\
-            ${args}
-    fi
+    # Run ProteinMPNN - Nextflow handles container execution
+    python /opt/ProteinMPNN/protein_mpnn_run.py \\
+        --jsonl_path "\${path_for_parsed_chains}" \\
+        --out_folder "\${output_dir}" \\
+        \${fixed_pos_arg} \\
+        --num_seq_per_target ${num_sequences} \\
+        --batch_size 1 \\
+        \${get_args} \\
+        ${args}
     
     # Split FASTA files
     python ${helper_dir}/split_mpnn_fastas.py \\

@@ -4,18 +4,18 @@ process ALPHAFOLD {
     label 'process_high_memory'
 
     conda "${moduleDir}/environment.yml"
-    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        params.alphafold_sif_path ?: 'docker://alphafold/alphafold:latest' :
-        'docker.io/alphafold/alphafold:latest' }"
+    container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container
+        ? params.alphafold_sif_path ?: 'docker://alphafold/alphafold:latest'
+        : 'docker.io/alphafold/alphafold:latest'}"
 
     input:
     tuple val(meta), path(fasta)
 
     output:
-    tuple val(meta), path("*.pdb")     , emit: structures
-    tuple val(meta), path("*.json")    , emit: scores, optional: true
+    tuple val(meta), path("*.pdb"), emit: structures
+    tuple val(meta), path("*.json"), emit: scores, optional: true
     tuple val(meta), path("timings.json"), emit: timings, optional: true
-    path "versions.yml"                  , emit: versions
+    path "versions.yml", emit: versions
 
     when:
     task.ext.when == null || task.ext.when
@@ -27,9 +27,7 @@ process ALPHAFOLD {
     def config_path = params.alphafold_config_path ?: params.config_dir ?: '.'
     def config_name = params.alphafold_config_name ?: 'AlphaFold.yaml'
     def helper_dir = params.helper_dir ?: './bin'
-    
-    def bind_args = params.alphafold_data_dir ? "--bind ${params.alphafold_data_dir}:${params.alphafold_data_dir}" : ""
-    
+
     """
     # Create output directory
     mkdir -p ${output_dir}
@@ -42,25 +40,12 @@ process ALPHAFOLD {
     fi
     
     # Run AlphaFold
-    if [ "${workflow.containerEngine}" == "singularity" ]; then
-        singularity exec --nv \\
-            ${bind_args} \\
-            ${params.alphafold_sif_path} \\
-            /opt/run_alphafold.sh \\
-                -f ${fasta} \\
-                -d ${data_dir} \\
-                -o ${output_dir}/ \\
-                \${get_args} \\
-                ${args}
-    else
-        # Docker/other container engines
-        /opt/run_alphafold.sh \\
-            -f ${fasta} \\
-            -d ${data_dir} \\
-            -o ${output_dir}/ \\
-            \${get_args} \\
-            ${args}
-    fi
+    /opt/run_alphafold.sh \\
+        -f ${fasta} \\
+        -d ${data_dir} \\
+        -o ${output_dir}/ \\
+        \${get_args} \\
+        ${args}
     
     # Move results to main directory
     find ${output_dir} -name "*.pdb" -exec mv {} . \\;
