@@ -28,8 +28,6 @@ process ALPHAFOLD {
     def config_name = params.alphafold_config_name ?: 'AlphaFold.yaml'
     def helper_dir = params.helper_dir ?: './bin'
     
-    def bind_args = params.alphafold_data_dir ? "--bind ${params.alphafold_data_dir}:${params.alphafold_data_dir}" : ""
-    
     """
     # Create output directory
     mkdir -p ${output_dir}
@@ -41,26 +39,13 @@ process ALPHAFOLD {
         get_args=""
     fi
     
-    # Run AlphaFold
-    if [ "${workflow.containerEngine}" == "singularity" ]; then
-        singularity exec --nv \\
-            ${bind_args} \\
-            ${params.alphafold_sif_path} \\
-            /opt/run_alphafold.sh \\
-                -f ${fasta} \\
-                -d ${data_dir} \\
-                -o ${output_dir}/ \\
-                \${get_args} \\
-                ${args}
-    else
-        # Docker/other container engines
-        /opt/run_alphafold.sh \\
-            -f ${fasta} \\
-            -d ${data_dir} \\
-            -o ${output_dir}/ \\
-            \${get_args} \\
-            ${args}
-    fi
+    # Run AlphaFold - Nextflow handles container execution
+    /opt/run_alphafold.sh \\
+        -f ${fasta} \\
+        -d ${data_dir} \\
+        -o ${output_dir}/ \\
+        \${get_args} \\
+        ${args}
     
     # Move results to main directory
     find ${output_dir} -name "*.pdb" -exec mv {} . \\;

@@ -26,8 +26,7 @@ process RFDIFFUSION {
     def config_name = params.rfdiff_config_name ?: 'RFdiffusion.yaml'
     def editables_dir = params.rfdiff_editables_dir ?: '/opt/RFdiffusion'
     
-    // Construct binding and environment variables
-    def bind_args = params.rfdiff_editables_dir ? "--bind ${params.rfdiff_editables_dir}:${params.rfdiff_editables_dir}" : ""
+    // Construct environment variables
     def schedule_dir = params.rfdiff_editables_dir ? "${params.rfdiff_editables_dir}/schedules" : "${editables_dir}/schedules"
     def model_dir = params.rfdiff_editables_dir ? "${params.rfdiff_editables_dir}/models" : "${editables_dir}/models"
     
@@ -36,30 +35,14 @@ process RFDIFFUSION {
     export SCHEDULE_DIR="${schedule_dir}"
     export MODEL_DIR="${model_dir}"
     
-    # Run RFdiffusion
-    if [ "${workflow.containerEngine}" == "singularity" ]; then
-        singularity exec --nv \\
-            ${bind_args} \\
-            --env SCHEDULE_DIR="\${SCHEDULE_DIR}" \\
-            --env MODEL_DIR="\${MODEL_DIR}" \\
-            ${params.rfdiff_sif_path} \\
-            /opt/miniconda/envs/SE3nv/bin/python /opt/RFdiffusion/scripts/run_inference.py \\
-                --config-path ${config_path} \\
-                --config-name ${config_name} \\
-                +inference.output_prefix="\${PWD}/${prefix}_RFD" \\
-                +inference.num_designs=1 \\
-                +inference.design_startnum=${design_idx} \\
-                ${args}
-    else
-        # Docker/other container engines
-        python /opt/RFdiffusion/scripts/run_inference.py \\
-            --config-path ${config_path} \\
-            --config-name ${config_name} \\
-            +inference.output_prefix="\${PWD}/${prefix}_RFD" \\
-            +inference.num_designs=1 \\
-            +inference.design_startnum=${design_idx} \\
-            ${args}
-    fi
+    # Run RFdiffusion - Nextflow handles container execution
+    /opt/miniconda/envs/SE3nv/bin/python /opt/RFdiffusion/scripts/run_inference.py \\
+        --config-path ${config_path} \\
+        --config-name ${config_name} \\
+        +inference.output_prefix="\${PWD}/${prefix}_RFD" \\
+        +inference.num_designs=1 \\
+        +inference.design_startnum=${design_idx} \\
+        ${args}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
